@@ -8,12 +8,16 @@ Talk to your AI agent like a phone call.
 Configuration (environment variables):
   OPENCLAW_GATEWAY_URL    - Gateway WebSocket URL (optional, for remote gateways)
   OPENCLAW_GATEWAY_TOKEN  - Gateway auth token (optional)
-  ELEVENLABS_API_KEY      - ElevenLabs API key (optional, falls back to macOS `say`)
+  ELEVENLABS_API_KEY      - ElevenLabs API key (optional, highest TTS priority)
   ELEVENLABS_VOICE_ID     - ElevenLabs voice ID (default: Rachel)
   ELEVENLABS_SPEED        - Playback speed multiplier (default: 1.0)
+  OPENAI_API_KEY          - OpenAI API key (optional, second TTS priority)
+  OPENAI_VOICE            - OpenAI TTS voice (default: alloy)
   WHISPER_MODEL           - Whisper model size (default: tiny)
   VOICE_SESSION_ID        - OpenClaw session ID (default: voice-loop)
   AGENT_TIMEOUT           - Seconds to wait for agent reply (default: 60)
+  SAY_RATE                - macOS `say` words per minute (default: 350)
+  MAX_TURNS               - Max conversation turns before reset (default: 50)
 
 Requirements:
   pip install -r requirements.txt
@@ -36,6 +40,8 @@ GATEWAY_TOKEN = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel
 ELEVENLABS_SPEED = float(os.environ.get("ELEVENLABS_SPEED", "1.0"))
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_VOICE = os.environ.get("OPENAI_VOICE", "alloy")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "tiny")
 SESSION_ID = os.environ.get("VOICE_SESSION_ID", "voice-loop")
 AGENT_TIMEOUT = int(os.environ.get("AGENT_TIMEOUT", "60"))
@@ -45,7 +51,7 @@ CHANNELS = 1
 SILENCE_DURATION = 1.5
 MIN_SPEECH_DURATION = 0.5
 MAX_REPLY_CHARS = 500
-MAX_TURNS = 50
+MAX_TURNS = int(os.environ.get("MAX_TURNS", "50"))
 
 VOICE_HINT = (
     "[VOICE MODE] You are in a live voice conversation. "
@@ -273,10 +279,49 @@ def speak_elevenlabs(text):
                 pass
 
 
+def speak_openai(text):
+    """OpenAI TTS → play."""
+    raw_path = tempfile.mktemp(suffix=".mp3")
+    try:
+        subprocess.run(
+            [
+                "curl", "-s", "-X", "POST",
+                "https://api.openai.com/v1/audio/speech",
+                "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
+                "-H", "Content-Type: application/json",
+                "-d", json.dumps({
+                    "model": "tts-1",
+                    "voice": OPENAI_VOICE,
+                    "input": text,
+                }),
+                "-o", raw_path,
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+
+        if not os.path.exists(raw_path) or os.path.getsize(raw_path) < 1000:
+            print("OpenAI TTS failed, falling back to macOS say")
+            speak_macos(text)
+            return
+
+        subprocess.run(["afplay", raw_path], timeout=60)
+
+    except Exception as e:
+        print(f"OpenAI TTS error: {e}, falling back to macOS say")
+        speak_macos(text)
+    finally:
+        try:
+            os.unlink(raw_path)
+        except OSError:
+            pass
+
+
+SAY_RATE = int(os.environ.get("SAY_RATE", "350"))  # words per minute (default ~200, 350 = ~1.75x)
+
 def speak_macos(text):
     """Fallback TTS using macOS `say` command."""
     try:
-        subprocess.run(["say", text], timeout=60)
+        subprocess.run(["say", "-r", str(SAY_RATE), text], timeout=60)
     except FileNotFoundError:
         print("⚠️  No TTS available (macOS `say` not found)")
     except Exception as e:
@@ -290,6 +335,8 @@ def speak(text):
 
     if ELEVENLABS_API_KEY:
         speak_elevenlabs(text)
+    elif OPENAI_API_KEY:
+        speak_openai(text)
     else:
         speak_macos(text)
 
@@ -304,7 +351,8 @@ def main():
     print("=" * 50)
     print(f"Session: {SESSION_ID}")
     print(f"Whisper: {WHISPER_MODEL}")
-    print(f"TTS: {'ElevenLabs' if ELEVENLABS_API_KEY else 'macOS say (set ELEVENLABS_API_KEY for ElevenLabs)'}")
+    tts_name = "ElevenLabs" if ELEVENLABS_API_KEY else "OpenAI" if OPENAI_API_KEY else "macOS say"
+    print(f"TTS: {tts_name}")
     if ELEVENLABS_API_KEY and ELEVENLABS_SPEED != 1.0:
         print(f"Speed: {ELEVENLABS_SPEED}x")
     print("Press Ctrl+C to quit\n")

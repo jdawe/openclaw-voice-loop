@@ -11,7 +11,7 @@ A continuous voice conversation loop that captures your speech, transcribes it l
 1. **Listen** — Records from your mic, detects speech, stops on silence
 2. **Transcribe** — Local Whisper model converts speech to text
 3. **Think** — Sends text to your OpenClaw agent via `openclaw agent` CLI
-4. **Speak** — Converts the reply to audio via ElevenLabs TTS (or macOS `say` as fallback)
+4. **Speak** — Converts the reply to audio via ElevenLabs, OpenAI TTS, or macOS `say`
 5. **Repeat**
 
 Works with any OpenClaw gateway and any model configured on that gateway (Claude, GPT, Gemini, local models, etc.).
@@ -48,8 +48,13 @@ pip install -r requirements.txt
 # Basic — uses macOS `say` for TTS
 python voice_loop.py
 
-# With ElevenLabs TTS
+# With ElevenLabs TTS (highest quality)
 export ELEVENLABS_API_KEY=your_key_here
+python voice_loop.py
+
+# With OpenAI TTS
+export OPENAI_API_KEY=your_key_here
+export OPENAI_VOICE=nova  # optional, default: alloy
 python voice_loop.py
 
 # With a remote OpenClaw gateway
@@ -62,16 +67,22 @@ python voice_loop.py
 
 All configuration is via environment variables:
 
+TTS priority: **ElevenLabs → OpenAI → macOS `say`** (first available key wins).
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ELEVENLABS_API_KEY` | _(none)_ | ElevenLabs API key. If unset, falls back to macOS `say` |
+| `ELEVENLABS_API_KEY` | _(none)_ | ElevenLabs API key (highest TTS priority) |
 | `ELEVENLABS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | ElevenLabs voice ID (default: Rachel) |
 | `ELEVENLABS_SPEED` | `1.0` | Playback speed multiplier |
+| `OPENAI_API_KEY` | _(none)_ | OpenAI API key (second TTS priority) |
+| `OPENAI_VOICE` | `alloy` | OpenAI TTS voice: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` |
 | `WHISPER_MODEL` | `tiny` | Whisper model: `tiny`, `base`, `small`, `medium`, `large` |
 | `OPENCLAW_GATEWAY_URL` | _(none)_ | Remote gateway WebSocket URL |
 | `OPENCLAW_GATEWAY_TOKEN` | _(none)_ | Gateway auth token |
 | `VOICE_SESSION_ID` | `voice-loop` | OpenClaw session ID (maintains conversation context) |
 | `AGENT_TIMEOUT` | `60` | Seconds to wait for agent reply |
+| `SAY_RATE` | `350` | macOS `say` words per minute |
+| `MAX_TURNS` | `50` | Max conversation turns before auto-reset |
 
 ## Tips
 
