@@ -19,7 +19,7 @@ Works with any OpenClaw gateway and any model configured on that gateway (Claude
 ## Requirements
 
 - Python 3.9+
-- [OpenClaw](https://openclaw.com) CLI installed and configured
+- [OpenClaw](https://openclaw.ai) CLI installed and configured
 - ffmpeg and portaudio
 
 ### macOS
